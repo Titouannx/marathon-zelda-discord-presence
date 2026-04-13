@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, for example v0.1.1"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.26.2"
+  DISCORD_CLIENT_ID: ${{ vars.DISCORD_CLIENT_ID != '' && vars.DISCORD_CLIENT_ID || secrets.DISCORD_CLIENT_ID }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve release tag
+        id: resolve
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "Missing release tag." >&2
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Discord client id
+        shell: bash
+        run: |
+          if [ -z "$DISCORD_CLIENT_ID" ]; then
+            echo "DISCORD_CLIENT_ID repository variable or secret is required." >&2
+            exit 1
+          fi
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build Windows release ZIP
+        shell: pwsh
+        run: .\scripts\build.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/marathon-zelda-presence-windows.zip
+          if-no-files-found: error
+
+  build-macos-intel:
+    needs: prepare
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build macOS Intel release ZIP
+        shell: bash
+        run: |
+          mkdir -p bin dist
+          GOOS=darwin GOARCH=amd64 go build \
+            -ldflags "-X main.discordClientID=${DISCORD_CLIENT_ID}" \
+            -o bin/marathon-zelda-presence-darwin-amd64 \
+            ./cmd/marathon-zelda-presence
+          zip -j dist/marathon-zelda-presence-macos-intel.zip bin/marathon-zelda-presence-darwin-amd64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-intel
+          path: dist/marathon-zelda-presence-macos-intel.zip
+          if-no-files-found: error
+
+  build-macos-arm64:
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build macOS Apple Silicon release ZIP
+        shell: bash
+        run: |
+          mkdir -p bin dist
+          GOOS=darwin GOARCH=arm64 go build \
+            -ldflags "-X main.discordClientID=${DISCORD_CLIENT_ID}" \
+            -o bin/marathon-zelda-presence-darwin-arm64 \
+            ./cmd/marathon-zelda-presence
+          zip -j dist/marathon-zelda-presence-macos-arm64.zip bin/marathon-zelda-presence-darwin-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: dist/marathon-zelda-presence-macos-arm64.zip
+          if-no-files-found: error
+
+  publish-release:
+    needs:
+      - prepare
+      - build-windows
+      - build-macos-intel
+      - build-macos-arm64
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          ls -la dist
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --generate-notes
+          fi
