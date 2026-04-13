@@ -65,6 +65,19 @@ zip -j dist/marathon-zelda-presence-macos-arm64.zip bin/marathon-zelda-presence-
 - `marathon-zelda-presence-macos-intel.zip`
 - `marathon-zelda-presence-macos-arm64.zip`
 
+## GitHub Actions release
+
+Le repo contient un workflow `Release` qui construit et publie automatiquement les 3 ZIP sur GitHub Releases.
+
+Prerequis:
+
+- definir la variable de repository `DISCORD_CLIENT_ID`
+
+Publication:
+
+- soit pousser un tag `vX.Y.Z`
+- soit lancer manuellement le workflow `Release` avec l input `tag`
+
 ## Remarques macOS
 
 La premiere version n'est pas signee ni notarized. Le premier lancement demandera donc une validation manuelle dans Gatekeeper.
