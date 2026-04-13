@@ -1,0 +1,8 @@
+bin/
+dist/
+build/
+config.json
+*.zip
+*.exe
+*.app
+*.test

@@ -1,0 +1,4 @@
+{
+  "presenceToken": "replace-me",
+  "statusUrl": "https://loon.bzh/api/zelda/presence/status"
+}
