@@ -20,13 +20,15 @@ import (
 )
 
 type App struct {
-	cfg          config.Config
-	rpc          *discord.Client
-	httpClient   *http.Client
-	cancel       context.CancelFunc
-	lastPresence *model.PresenceStatus
-	uninstall    *systray.MenuItem
-	quit         *systray.MenuItem
+	cfg           config.Config
+	rpc           *discord.Client
+	httpClient    *http.Client
+	cancel        context.CancelFunc
+	lastPresence  *model.PresenceStatus
+	currentStatus *model.PresenceStatus
+	openMarathon  *systray.MenuItem
+	uninstall     *systray.MenuItem
+	quit          *systray.MenuItem
 }
 
 const (
@@ -63,9 +65,11 @@ func (a *App) OnReady() {
 	systray.SetTitle(appTitle)
 	systray.SetTooltip(appTitle + " - attente de Discord")
 
+	a.openMarathon = systray.AddMenuItem("Ouvrir la page du marathon", "Ouvre la page Zelda sur loon.bzh")
 	a.uninstall = systray.AddMenuItem("Desinstaller", "Retire le demarrage auto et ferme le programme")
 	systray.AddSeparator()
 	a.quit = systray.AddMenuItem("Quitter", "Ferme le programme")
+	a.syncTrayActions(nil)
 	_, _ = a.ensureInstalled()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -85,6 +89,10 @@ func (a *App) OnExit() {
 func (a *App) menuLoop() {
 	for {
 		select {
+		case <-a.openMarathon.ClickedCh:
+			if err := platform.OpenURL(zeldaSiteURL); err != nil {
+				_ = platform.ShowError(appTitle, "Impossible d'ouvrir la page du marathon.")
+			}
 		case <-a.uninstall.ClickedCh:
 			_ = a.performUninstall()
 			_ = platform.ShowInfo(appTitle, uninstallationSuccessText)
@@ -139,6 +147,9 @@ func (a *App) refresh() {
 
 	if res.StatusCode == http.StatusUnauthorized {
 		_ = a.rpc.Clear()
+		a.lastPresence = nil
+		a.currentStatus = nil
+		a.syncTrayActions(nil)
 		systray.SetTooltip("Marathon Zelda - token invalide")
 		return
 	}
@@ -159,21 +170,40 @@ func (a *App) refresh() {
 
 	if !payload.Active {
 		a.lastPresence = nil
+		a.currentStatus = nil
+		a.syncTrayActions(nil)
 		_ = a.rpc.Clear()
 		systray.SetTooltip("Marathon Zelda - aucune session active")
 		return
 	}
+
+	current := payload
+	a.currentStatus = &current
+	a.syncTrayActions(a.currentStatus)
 
 	if shouldUpdatePresence(a.lastPresence, payload) {
 		if err := a.rpc.Set(payload); err != nil {
 			systray.SetTooltip("Marathon Zelda - Discord Desktop indisponible")
 			return
 		}
-		copy := payload
-		a.lastPresence = &copy
+		sent := payload
+		a.lastPresence = &sent
 	}
 
 	systray.SetTooltip("Marathon Zelda - " + payload.GameName)
+}
+
+func (a *App) syncTrayActions(current *model.PresenceStatus) {
+	if a.openMarathon == nil {
+		return
+	}
+
+	if current != nil && current.Active {
+		a.openMarathon.Hide()
+		return
+	}
+
+	a.openMarathon.Show()
 }
 
 func (a *App) ensureInstalled() (bool, error) {
@@ -283,6 +313,10 @@ func shouldUpdatePresence(current *model.PresenceStatus, next model.PresenceStat
 	return *current != next
 }
 
-func visibleTrayMenuLabels() []string {
-	return []string{"Desinstaller", "Quitter"}
+func visibleTrayMenuLabels(current *model.PresenceStatus) []string {
+	if current != nil && current.Active {
+		return []string{"Desinstaller", "Quitter"}
+	}
+
+	return []string{"Ouvrir la page du marathon", "Desinstaller", "Quitter"}
 }

@@ -54,13 +54,26 @@ func TestShouldUpdatePresenceRunsOnChangedPayload(t *testing.T) {
 	}
 }
 
-func TestVisibleTrayMenuEntriesAreMinimal(t *testing.T) {
-	labels := visibleTrayMenuLabels()
+func TestVisibleTrayMenuEntriesWhenNoSessionIncludeOpenPage(t *testing.T) {
+	labels := visibleTrayMenuLabels(nil)
+
+	if len(labels) != 3 {
+		t.Fatalf("expected three visible tray actions without session, got %d", len(labels))
+	}
+	if labels[0] != "Ouvrir la page du marathon" || labels[1] != "Desinstaller" || labels[2] != "Quitter" {
+		t.Fatalf("unexpected tray labels without session: %#v", labels)
+	}
+}
+
+func TestVisibleTrayMenuEntriesWhenSessionActiveStayMinimal(t *testing.T) {
+	current := &model.PresenceStatus{Active: true, GameName: "The Minish Cap"}
+
+	labels := visibleTrayMenuLabels(current)
 
 	if len(labels) != 2 {
-		t.Fatalf("expected two visible tray actions, got %d", len(labels))
+		t.Fatalf("expected two visible tray actions with an active session, got %d", len(labels))
 	}
 	if labels[0] != "Desinstaller" || labels[1] != "Quitter" {
-		t.Fatalf("unexpected tray labels: %#v", labels)
+		t.Fatalf("unexpected tray labels with active session: %#v", labels)
 	}
 }
