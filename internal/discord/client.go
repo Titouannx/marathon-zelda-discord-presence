@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	rich "github.com/jrh3k5/rich-go/client"
 	"github.com/Titouannx/marathon-zelda-discord-presence/internal/model"
+	rich "github.com/jrh3k5/rich-go/client"
 )
 
 type Client struct {
@@ -40,14 +40,40 @@ func (c *Client) Set(status model.PresenceStatus) error {
 		return err
 	}
 
+	if err := rich.SetActivity(buildActivity(status)); err != nil {
+		var closed *rich.ErrClosedConnection
+		if errors.As(err, &closed) {
+			c.connected = false
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) Clear() error {
+	if !c.connected {
+		return nil
+	}
+
+	err := rich.Logout()
+	c.connected = false
+	return err
+}
+
+func (c *Client) Close() {
+	_ = c.Clear()
+}
+
+func buildActivity(status model.PresenceStatus) rich.Activity {
 	start, err := time.Parse(time.RFC3339, status.SessionStartedAt)
 	if err != nil {
 		start = time.Now()
 	}
 
-	return rich.SetActivity(rich.Activity{
-		Details:    status.GameName,
-		State:      "Marathon en cours - via loon.bzh/zelda",
+	return rich.Activity{
+		Details:    "En train de jouer a " + status.GameName,
+		State:      "via loon.bzh/zelda",
 		LargeImage: status.GameLogoURL,
 		LargeText:  status.GameName,
 		Timestamps: &rich.Timestamps{Start: &start},
@@ -57,22 +83,5 @@ func (c *Client) Set(status model.PresenceStatus) error {
 				Url:   status.ProfileURL,
 			},
 		},
-	})
-}
-
-func (c *Client) Clear() error {
-	if !c.connected {
-		return nil
 	}
-
-	return rich.SetActivity(rich.Activity{})
-}
-
-func (c *Client) Close() {
-	if !c.connected {
-		return
-	}
-
-	rich.Logout()
-	c.connected = false
 }
