@@ -16,6 +16,7 @@ permissions:
 env:
   GO_VERSION: "1.26.2"
   DISCORD_CLIENT_ID: ${{ vars.DISCORD_CLIENT_ID != '' && vars.DISCORD_CLIENT_ID || secrets.DISCORD_CLIENT_ID }}
+  DISCORD_PRESENCE_CLIENT_ID: ${{ vars.DISCORD_PRESENCE_CLIENT_ID != '' && vars.DISCORD_PRESENCE_CLIENT_ID || secrets.DISCORD_PRESENCE_CLIENT_ID }}
 
 jobs:
   prepare:
@@ -43,8 +44,9 @@ jobs:
       - name: Validate Discord client id
         shell: bash
         run: |
-          if [ -z "$DISCORD_CLIENT_ID" ]; then
-            echo "DISCORD_CLIENT_ID repository variable or secret is required." >&2
+          EFFECTIVE_DISCORD_CLIENT_ID="${DISCORD_PRESENCE_CLIENT_ID:-$DISCORD_CLIENT_ID}"
+          if [ -z "$EFFECTIVE_DISCORD_CLIENT_ID" ]; then
+            echo "DISCORD_PRESENCE_CLIENT_ID or DISCORD_CLIENT_ID repository variable/secret is required." >&2
             exit 1
           fi
 
@@ -82,8 +84,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin dist
+          EFFECTIVE_DISCORD_CLIENT_ID="${DISCORD_PRESENCE_CLIENT_ID:-$DISCORD_CLIENT_ID}"
           GOOS=darwin GOARCH=amd64 go build \
-            -ldflags "-X main.discordClientID=${DISCORD_CLIENT_ID}" \
+            -ldflags "-X main.discordClientID=${EFFECTIVE_DISCORD_CLIENT_ID}" \
             -o bin/marathon-zelda-presence-darwin-amd64 \
             ./cmd/marathon-zelda-presence
           zip -j dist/marathon-zelda-presence-macos-intel.zip bin/marathon-zelda-presence-darwin-amd64
@@ -108,8 +111,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin dist
+          EFFECTIVE_DISCORD_CLIENT_ID="${DISCORD_PRESENCE_CLIENT_ID:-$DISCORD_CLIENT_ID}"
           GOOS=darwin GOARCH=arm64 go build \
-            -ldflags "-X main.discordClientID=${DISCORD_CLIENT_ID}" \
+            -ldflags "-X main.discordClientID=${EFFECTIVE_DISCORD_CLIENT_ID}" \
             -o bin/marathon-zelda-presence-darwin-arm64 \
             ./cmd/marathon-zelda-presence
           zip -j dist/marathon-zelda-presence-macos-arm64.zip bin/marathon-zelda-presence-darwin-arm64
