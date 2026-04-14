@@ -79,3 +79,25 @@ func TestBuildActivityFallsBackToNowOnInvalidTimestamp(t *testing.T) {
 		t.Fatalf("unexpected fallback timestamp: %s", activity.Timestamps.Start.UTC().Format(time.RFC3339))
 	}
 }
+
+func TestBuildActivityParsesPostgresStyleTimestamp(t *testing.T) {
+	t.Parallel()
+
+	status := model.PresenceStatus{
+		Active:           true,
+		GameName:         "The Minish Cap",
+		GameLogoURL:      "https://www.loon.bzh/api/zelda/presence/logo/theminishcap",
+		SessionStartedAt: "2026-04-14 18:30:00.123+00",
+		ProfileURL:       "https://www.loon.bzh/zelda/profile/p_demo",
+	}
+
+	activity := buildActivity(status)
+
+	if activity.Timestamps == nil || activity.Timestamps.Start == nil {
+		t.Fatal("expected start timestamp to be set")
+	}
+
+	if got := activity.Timestamps.Start.UTC().Format(time.RFC3339Nano); got != "2026-04-14T18:30:00.123Z" {
+		t.Fatalf("unexpected parsed timestamp: %q", got)
+	}
+}
