@@ -20,16 +20,13 @@ import (
 )
 
 type App struct {
-	cfg         config.Config
-	rpc         *discord.Client
-	httpClient  *http.Client
-	cancel      context.CancelFunc
-	lastProfile string
-	autoStart   *systray.MenuItem
-	openProfile *systray.MenuItem
-	uninstall   *systray.MenuItem
-	quit        *systray.MenuItem
-	about       *systray.MenuItem
+	cfg          config.Config
+	rpc          *discord.Client
+	httpClient   *http.Client
+	cancel       context.CancelFunc
+	lastPresence *model.PresenceStatus
+	uninstall    *systray.MenuItem
+	quit         *systray.MenuItem
 }
 
 const (
@@ -66,18 +63,10 @@ func (a *App) OnReady() {
 	systray.SetTitle(appTitle)
 	systray.SetTooltip(appTitle + " - attente de Discord")
 
-	a.openProfile = systray.AddMenuItem("Ouvrir mon profil", "Ouvre le profil Marathon Zelda actuel")
-	a.autoStart = systray.AddMenuItem("Lancer au demarrage", "Active ou desactive le demarrage auto")
 	a.uninstall = systray.AddMenuItem("Desinstaller", "Retire le demarrage auto et ferme le programme")
-	a.about = systray.AddMenuItem("A propos", "Ouvre la page du marathon")
 	systray.AddSeparator()
 	a.quit = systray.AddMenuItem("Quitter", "Ferme le programme")
-
-	if installed, err := a.ensureInstalled(); err == nil {
-		if installed {
-			a.autoStart.Check()
-		}
-	}
+	_, _ = a.ensureInstalled()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
@@ -96,22 +85,6 @@ func (a *App) OnExit() {
 func (a *App) menuLoop() {
 	for {
 		select {
-		case <-a.openProfile.ClickedCh:
-			_ = platform.OpenURL(resolveProfileTarget(a.lastProfile))
-		case <-a.about.ClickedCh:
-			_ = platform.OpenURL(zeldaSiteURL)
-		case <-a.autoStart.ClickedCh:
-			if platform.IsAutoStartEnabled() {
-				if err := platform.RemoveAutoStart(); err == nil {
-					a.autoStart.Uncheck()
-				}
-			} else {
-				if err := platform.InstallAutoStart(); err == nil {
-					_ = a.writeInstallationMarker()
-					_ = platform.EnsureAppRegistration(installedAppName)
-					a.autoStart.Check()
-				}
-			}
 		case <-a.uninstall.ClickedCh:
 			_ = a.performUninstall()
 			_ = platform.ShowInfo(appTitle, uninstallationSuccessText)
@@ -185,18 +158,21 @@ func (a *App) refresh() {
 	}
 
 	if !payload.Active {
-		a.lastProfile = ""
+		a.lastPresence = nil
 		_ = a.rpc.Clear()
 		systray.SetTooltip("Marathon Zelda - aucune session active")
 		return
 	}
 
-	if err := a.rpc.Set(payload); err != nil {
-		systray.SetTooltip("Marathon Zelda - Discord Desktop indisponible")
-		return
+	if shouldUpdatePresence(a.lastPresence, payload) {
+		if err := a.rpc.Set(payload); err != nil {
+			systray.SetTooltip("Marathon Zelda - Discord Desktop indisponible")
+			return
+		}
+		copy := payload
+		a.lastPresence = &copy
 	}
 
-	a.lastProfile = payload.ProfileURL
 	systray.SetTooltip("Marathon Zelda - " + payload.GameName)
 }
 
@@ -297,4 +273,16 @@ func resolveProfileTarget(lastProfile string) string {
 	}
 
 	return zeldaSiteURL
+}
+
+func shouldUpdatePresence(current *model.PresenceStatus, next model.PresenceStatus) bool {
+	if current == nil {
+		return true
+	}
+
+	return *current != next
+}
+
+func visibleTrayMenuLabels() []string {
+	return []string{"Desinstaller", "Quitter"}
 }

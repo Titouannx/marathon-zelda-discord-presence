@@ -66,10 +66,7 @@ func (c *Client) Close() {
 }
 
 func buildActivity(status model.PresenceStatus) rich.Activity {
-	start, err := time.Parse(time.RFC3339, status.SessionStartedAt)
-	if err != nil {
-		start = time.Now()
-	}
+	start := parseActivityStart(status.SessionStartedAt)
 
 	return rich.Activity{
 		Details:    "En train de jouer a " + status.GameName,
@@ -84,4 +81,23 @@ func buildActivity(status model.PresenceStatus) rich.Activity {
 			},
 		},
 	}
+}
+
+func parseActivityStart(value string) time.Time {
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999-07",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05-07",
+	} {
+		if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
+			return parsed
+		}
+	}
+
+	return time.Now()
 }
