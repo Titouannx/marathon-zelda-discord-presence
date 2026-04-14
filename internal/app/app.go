@@ -3,9 +3,12 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Titouannx/marathon-zelda-discord-presence/internal/assets"
@@ -24,9 +27,18 @@ type App struct {
 	lastProfile string
 	autoStart   *systray.MenuItem
 	openProfile *systray.MenuItem
+	uninstall   *systray.MenuItem
 	quit        *systray.MenuItem
 	about       *systray.MenuItem
 }
+
+const (
+	appTitle                  = "Marathon Zelda"
+	installedAppName          = "Marathon Zelda Activite Discord"
+	installationMarkerName    = ".marathon-zelda-presence-installed"
+	installationSuccessText   = "Activite Discord Marathon Zelda installee.\nCelle-ci s'affichera lors du prochain demarrage de session."
+	uninstallationSuccessText = "Activite Discord Marathon Zelda desinstallee.\nLe demarrage automatique a ete retire. Tu peux maintenant supprimer ce dossier."
+)
 
 func New(discordClientID string) (*App, error) {
 	cfg, err := config.Load()
@@ -50,17 +62,20 @@ func New(discordClientID string) (*App, error) {
 
 func (a *App) OnReady() {
 	systray.SetIcon(assets.TrayIcon)
-	systray.SetTitle("Marathon Zelda")
-	systray.SetTooltip("Marathon Zelda - attente de Discord")
+	systray.SetTitle(appTitle)
+	systray.SetTooltip(appTitle + " - attente de Discord")
 
 	a.openProfile = systray.AddMenuItem("Ouvrir mon profil", "Ouvre le profil Marathon Zelda actuel")
 	a.autoStart = systray.AddMenuItem("Lancer au demarrage", "Active ou desactive le demarrage auto")
+	a.uninstall = systray.AddMenuItem("Desinstaller", "Retire le demarrage auto et ferme le programme")
 	a.about = systray.AddMenuItem("A propos", "Ouvre la page du marathon")
 	systray.AddSeparator()
 	a.quit = systray.AddMenuItem("Quitter", "Ferme le programme")
 
-	if platform.IsAutoStartEnabled() {
-		a.autoStart.Check()
+	if installed, err := a.ensureInstalled(); err == nil {
+		if installed {
+			a.autoStart.Check()
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -93,9 +108,16 @@ func (a *App) menuLoop() {
 				}
 			} else {
 				if err := platform.InstallAutoStart(); err == nil {
+					_ = a.writeInstallationMarker()
+					_ = platform.EnsureAppRegistration(installedAppName)
 					a.autoStart.Check()
 				}
 			}
+		case <-a.uninstall.ClickedCh:
+			_ = a.performUninstall()
+			_ = platform.ShowInfo(appTitle, uninstallationSuccessText)
+			systray.Quit()
+			return
 		case <-a.quit.ClickedCh:
 			systray.Quit()
 			return
@@ -177,4 +199,95 @@ func (a *App) refresh() {
 
 	a.lastProfile = payload.ProfileURL
 	systray.SetTooltip("Marathon Zelda - " + payload.GameName)
+}
+
+func (a *App) ensureInstalled() (bool, error) {
+	if platform.IsAutoStartEnabled() {
+		_ = a.writeInstallationMarker()
+		_ = platform.EnsureAppRegistration(installedAppName)
+		return true, nil
+	}
+
+	hasMarker, err := a.hasInstallationMarker()
+	if err != nil {
+		return false, err
+	}
+	if hasMarker {
+		return false, nil
+	}
+
+	if err := platform.InstallAutoStart(); err != nil {
+		_ = platform.ShowError(appTitle, "Impossible d'activer le demarrage automatique pour Marathon Zelda.")
+		return false, err
+	}
+	if err := platform.EnsureAppRegistration(installedAppName); err != nil {
+		_ = platform.ShowError(appTitle, "Impossible d'enregistrer la desinstallation Windows pour Marathon Zelda.")
+	}
+
+	if err := a.writeInstallationMarker(); err != nil {
+		return true, err
+	}
+
+	_ = platform.ShowInfo(appTitle, installationSuccessText)
+	return true, nil
+}
+
+func (a *App) hasInstallationMarker() (bool, error) {
+	path, err := installationMarkerPath()
+	if err != nil {
+		return false, err
+	}
+
+	_, err = os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (a *App) writeInstallationMarker() error {
+	path, err := installationMarkerPath()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte("installed\n"), 0o644)
+}
+
+func (a *App) removeInstallationMarker() error {
+	return removeInstallationMarkerFile()
+}
+
+func (a *App) performUninstall() error {
+	_ = a.rpc.Clear()
+	_ = platform.RemoveAutoStart()
+	_ = platform.RemoveAppRegistration()
+	return removeInstallationMarkerFile()
+}
+
+func UninstallCurrentInstallation() error {
+	_ = platform.RemoveAutoStart()
+	_ = platform.RemoveAppRegistration()
+	return removeInstallationMarkerFile()
+}
+
+func removeInstallationMarkerFile() error {
+	path, err := installationMarkerPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func installationMarkerPath() (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(executable), installationMarkerName), nil
 }
