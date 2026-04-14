@@ -38,6 +38,7 @@ const (
 	installationMarkerName    = ".marathon-zelda-presence-installed"
 	installationSuccessText   = "Activite Discord Marathon Zelda installee.\nCelle-ci s'affichera lors du prochain demarrage de session."
 	uninstallationSuccessText = "Activite Discord Marathon Zelda desinstallee.\nLe demarrage automatique a ete retire. Tu peux maintenant supprimer ce dossier."
+	zeldaSiteURL              = "https://www.loon.bzh/zelda"
 )
 
 func New(discordClientID string) (*App, error) {
@@ -96,11 +97,9 @@ func (a *App) menuLoop() {
 	for {
 		select {
 		case <-a.openProfile.ClickedCh:
-			if a.lastProfile != "" {
-				_ = platform.OpenURL(a.lastProfile)
-			}
+			_ = platform.OpenURL(resolveProfileTarget(a.lastProfile))
 		case <-a.about.ClickedCh:
-			_ = platform.OpenURL("https://loon.bzh/zelda")
+			_ = platform.OpenURL(zeldaSiteURL)
 		case <-a.autoStart.ClickedCh:
 			if platform.IsAutoStartEnabled() {
 				if err := platform.RemoveAutoStart(); err == nil {
@@ -290,4 +289,12 @@ func installationMarkerPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(filepath.Dir(executable), installationMarkerName), nil
+}
+
+func resolveProfileTarget(lastProfile string) string {
+	if lastProfile != "" {
+		return lastProfile
+	}
+
+	return zeldaSiteURL
 }
