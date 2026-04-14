@@ -5,7 +5,7 @@ Client local open-source pour afficher automatiquement la progression du Maratho
 ## Ce que fait le programme
 
 - lit `config.json` a cote de l'executable
-- interroge `https://loon.bzh/api/zelda/presence/status?token=...` toutes les 30 secondes
+- interroge `https://www.loon.bzh/api/zelda/presence/status?token=...` toutes les 30 secondes
 - met a jour la Rich Presence Discord quand une session Zelda est active
 - efface la presence quand aucune session n'est active
 - s'enregistre au demarrage de l'OS au premier lancement et affiche une confirmation d'installation
@@ -25,7 +25,7 @@ Le site genere automatiquement un `config.json` au telechargement.
 ```json
 {
   "presenceToken": "opaque-token",
-  "statusUrl": "https://loon.bzh/api/zelda/presence/status"
+  "statusUrl": "https://www.loon.bzh/api/zelda/presence/status"
 }
 ```
 
