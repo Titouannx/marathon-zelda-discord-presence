@@ -22,13 +22,43 @@ func executableDir() (string, error) {
 	return filepath.Dir(executablePath), nil
 }
 
-func Load() (Config, error) {
+// Path renvoie l'emplacement de config.json, a cote de l'executable.
+func Path() (string, error) {
 	dir, err := executableDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
+}
+
+// Save ecrit la configuration a cote de l'executable en 0600 (le jeton de
+// presence ne doit etre lisible que par l'utilisateur). Utilise par le flux de
+// liaison au premier lancement.
+func Save(cfg Config) error {
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+
+	if cfg.PollIntervalSeconds <= 0 {
+		cfg.PollIntervalSeconds = 30
+	}
+
+	payload, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, payload, 0o600)
+}
+
+func Load() (Config, error) {
+	path, err := Path()
 	if err != nil {
 		return Config{}, err
 	}
 
-	payload, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	payload, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
